@@ -19,25 +19,16 @@ VOCAB = {
             "um jovem que acabou de ganhar superpoderes", "um agente sobre-humano do governo",
             "uma equipe de heróis amadores", "um justiceiro movido a vingança",
             "uma cientista transformada em heroína", "um veterano herói aposentado",
-            "um cientista que sofre um acidente nuclear e se torna um monstro verde quando fica com raiva",
-            "um veterano da segunda guerra mundial que após congelado retorna nos tempos modernos",
-            "o último sobrevivente de um planeta moribundo que se torna o maior herói da terra",
-            "um órfão que testemunha a morte dos seus pais e se torna um vigilante mascarado",
-            "um mercenário moribundo que recebe poderes de um deus egípcio",
-            "um jovem que recebe poderes de uma aranha radioativa"
         ],
         "antagonista": [
             "um vilão que quer dominar a cidade", "uma organização secreta de supervilões",
             "seu arqui-inimigo de longa data", "uma máquina de guerra fora de controle",
             "um clone maligno de si mesmo", "um bilionário corrupto com um exército de robôs",
-            "um sobrevivente do holocausto que quer vingança", "um nazista que quer ressucitar Hitler",
-            "o primeiro-ministro israelense", "o filho de um milionário com prazer pelo sadismo"
         ],
         "cenario": [
             "em uma metrópole tomada pelo caos", "nas ruas de uma cidade à beira do colapso",
             "no topo de um arranha-céu em chamas", "durante uma invasão em grande escala",
-            "em um laboratório secreto no subsolo da cidade", "no topo do Empire State",
-            "na ilha da Estátua da Liberdade", "nas ruas escuras de uma ilha do Sudoeste Asiático"
+            "em um laboratório secreto no subsolo da cidade",
         ],
         "objetivo": [
             "salvar a cidade antes que seja tarde demais",
@@ -45,9 +36,6 @@ VOCAB = {
             "proteger sua identidade secreta enquanto luta pela justiça",
             "recuperar o controle de seus próprios poderes",
             "unir uma equipe dispersa para enfrentar a ameaça final",
-            "evitar um tirâno alienígena de causar um genocídio",
-            "evitar um nazista louco de ressuscitar o Hitler",
-            "evitar Israel de causar um genocídio com os palestinos"
         ],
     },
     "terror": {
@@ -135,31 +123,49 @@ def capitalize_first(text: str) -> str:
     return text[0].upper() + text[1:] if text else text
 
 
-def generate_sample(genre: str, rng: random.Random) -> str:
+def build_shared_pool() -> dict[str, list[str]]:
+    """Pool com os valores de TODOS os gêneros para cada tipo de slot —
+    usado para introduzir sobreposição de vocabulário entre gêneros."""
+    pool: dict[str, list[str]] = {}
+    for genre_vocab in VOCAB.values():
+        for slot, values in genre_vocab.items():
+            pool.setdefault(slot, [])
+            pool[slot].extend(values)
+    return {slot: sorted(set(values)) for slot, values in pool.items()}
+
+
+SHARED_POOL = build_shared_pool()
+
+
+def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0) -> str:
     vocab = VOCAB[genre]
-    protagonista = rng.choice(vocab["protagonista"])
-    antagonista = rng.choice(vocab["antagonista"])
-    cenario = rng.choice(vocab["cenario"])
-    objetivo = rng.choice(vocab["objetivo"])
+    slots = {}
+    for slot in ("protagonista", "antagonista", "cenario", "objetivo"):
+        # Com probabilidade overlap_prob, puxa o valor do pool geral (qualquer
+        # gênero) em vez do vocabulário específico deste gênero — isso cria
+        # frases ambíguas de propósito, tornando a classificação mais difícil.
+        source = SHARED_POOL[slot] if rng.random() < overlap_prob else vocab[slot]
+        slots[slot] = rng.choice(source)
+
     template = rng.choice(TEMPLATES)
     return template.format(
-        protagonista=protagonista,
-        protagonista_cap=capitalize_first(protagonista),
-        antagonista=antagonista,
-        cenario=cenario,
-        cenario_cap=capitalize_first(cenario),
-        objetivo=objetivo,
+        protagonista=slots["protagonista"],
+        protagonista_cap=capitalize_first(slots["protagonista"]),
+        antagonista=slots["antagonista"],
+        cenario=slots["cenario"],
+        cenario_cap=capitalize_first(slots["cenario"]),
+        objetivo=slots["objetivo"],
     )
 
 
-def generate_dataset(samples_per_class: int, seed: int) -> pd.DataFrame:
+def generate_dataset(samples_per_class: int, seed: int, overlap_prob: float = 0.0) -> pd.DataFrame:
     rng = random.Random(seed)
     rows = []
     for genre in GENRES:
         seen = set()
         attempts = 0
-        while len(seen) < samples_per_class and attempts < samples_per_class * 20:
-            text = generate_sample(genre, rng)
+        while len(seen) < samples_per_class and attempts < samples_per_class * 40:
+            text = generate_sample(genre, rng, overlap_prob)
             attempts += 1
             if text in seen:
                 continue
@@ -174,16 +180,22 @@ def main():
     parser.add_argument("--samples-per-class", type=int, default=150)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--overlap-prob",
+        type=float,
+        default=0.3,
+        help="Probabilidade de um slot vir do pool geral (sobreposição entre gêneros)",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path(__file__).resolve().parents[2] / "data" / "raw" / "comics_synthetic.csv",
     )
     args = parser.parse_args()
 
-    df = generate_dataset(args.samples_per_class, args.seed)
+    df = generate_dataset(args.samples_per_class, args.seed, args.overlap_prob)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.output, index=False)
-    print(f"Dataset salvo em {args.output} ({len(df)} amostras)")
+    print(f"Dataset salvo em {args.output} ({len(df)} amostras, overlap_prob={args.overlap_prob})")
     print(df["label"].value_counts())
 
 
