@@ -12,6 +12,16 @@ from torch.nn.utils.rnn import pack_padded_sequence
 
 
 class ComicRNNClassifier(nn.Module):
+    """Embedding (treinado do zero) -> RNN (GRU ou LSTM) -> camada densa.
+
+    Fluxo de shapes, com batch_size=B, max_len=L, embed_dim=E, hidden_dim=H:
+      input_ids  (B, L)               -- IDs inteiros de palavras
+      embedded   (B, L, E)            -- cada ID vira um vetor de E números
+      hidden     (camadas*direções, B, H) -- "resumo" da sequência inteira
+      final      (B, H) ou (B, 2H)    -- se bidirecional, concatena as 2 direções
+      logits     (B, num_classes)     -- pontuação de cada gênero (antes do softmax)
+    """
+
     def __init__(
         self,
         vocab_size: int,
@@ -29,40 +39,61 @@ class ComicRNNClassifier(nn.Module):
         self.rnn_type = rnn_type.lower()
         self.bidirectional = bidirectional
 
+        # Embedding: uma "tabela" (vocab_size x embed_dim) onde cada linha é o
+        # vetor que representa uma palavra. Começa aleatório e é ajustado
+        # durante o treino, junto com o resto da rede (não usamos embeddings
+        # pré-treinados tipo GloVe/Word2Vec aqui). padding_idx=0 congela o
+        # vetor do <PAD> em zero, já que ele não carrega informação real.
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_idx)
 
+        # GRU e LSTM são dois "sabores" de rede recorrente — processam a frase
+        # palavra por palavra, mantendo uma memória (hidden state) do que já
+        # leram. GRU é mais simples/leve; LSTM tem uma memória extra (cell
+        # state) e costuma ajudar em sequências mais longas.
         rnn_cls = nn.GRU if self.rnn_type == "gru" else nn.LSTM
         self.rnn = rnn_cls(
             input_size=embed_dim,
             hidden_size=hidden_dim,
             num_layers=num_layers,
-            batch_first=True,
-            bidirectional=bidirectional,
-            dropout=dropout if num_layers > 1 else 0.0,
+            batch_first=True,  # espera tensores (batch, seq, features), não (seq, batch, features)
+            bidirectional=bidirectional,  # lê a frase da esquerda->direita E direita->esquerda
+            dropout=dropout if num_layers > 1 else 0.0,  # só tem efeito com 2+ camadas
         )
 
+        # Se bidirecional, a saída da RNN tem o dobro do tamanho (forward +
+        # backward concatenados), por isso hidden_dim * num_directions aqui.
         num_directions = 2 if bidirectional else 1
-        self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(hidden_dim * num_directions, num_classes)
+        self.dropout = nn.Dropout(dropout)  # zera neurônios aleatoriamente no treino, combate overfitting
+        self.fc = nn.Linear(hidden_dim * num_directions, num_classes)  # camada final: "resumo" -> 4 notas de gênero
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
-        # Comprimento real de cada sequência (ignora o padding)
+        # Cada frase foi preenchida (padding) até max_len, mas o padding não
+        # é uma palavra de verdade — contamos só os tokens != <PAD> para saber
+        # o comprimento REAL de cada frase no batch.
         lengths = (input_ids != self.pad_idx).sum(dim=1).clamp(min=1).cpu()
 
-        embedded = self.embedding(input_ids)
+        embedded = self.embedding(input_ids)  # (B, L) -> (B, L, E)
+
+        # pack_padded_sequence "empacota" o batch de um jeito que a RNN
+        # processa só os tokens reais de cada frase, pulando o padding —
+        # sem isso, a rede perderia tempo (e aprenderia ruído) processando
+        # um monte de <PAD> no final das frases mais curtas.
+        # enforce_sorted=False: não precisamos ordenar o batch por tamanho manualmente.
         packed = pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=False)
-        _, hidden = self.rnn(packed)
+        _, hidden = self.rnn(packed)  # só nos interessa o hidden state final, não a saída passo-a-passo
 
         if self.rnn_type == "lstm":
-            hidden = hidden[0]  # (h_n, c_n) -> usa só h_n
+            hidden = hidden[0]  # LSTM devolve (h_n, c_n); GRU devolve só h_n -> padroniza aqui
 
+        # hidden tem shape (num_layers * num_directions, B, hidden_dim).
+        # Com 1 camada bidirecional, isso é (2, B, H): índice -2 = última
+        # camada lendo da esquerda pra direita, índice -1 = direita pra esquerda.
         if self.bidirectional:
-            # últimas camadas: [-2]=forward, [-1]=backward
-            final = torch.cat([hidden[-2], hidden[-1]], dim=1)
+            final = torch.cat([hidden[-2], hidden[-1]], dim=1)  # (B, H) + (B, H) -> (B, 2H)
         else:
-            final = hidden[-1]
+            final = hidden[-1]  # (B, H)
 
-        return self.fc(self.dropout(final))
+        return self.fc(self.dropout(final))  # (B, 2H ou H) -> (B, num_classes)
 
 
 def build_model_from_artifacts(processed_dir, **overrides) -> ComicRNNClassifier:

@@ -24,10 +24,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def tokenize(text: str) -> list[str]:
+    """Quebra o texto em palavras: minúsculo + regex que casa sequências de
+    letras (com acentos) e números, descartando pontuação e espaços.
+    Ex: "Um dragão, enfim!" -> ["um", "dragão", "enfim"]"""
     return TOKEN_RE.findall(text.lower())
 
 
 def build_vocab(token_lists: list[list[str]], min_freq: int = 1) -> dict[str, int]:
+    """Recebe uma lista de listas de tokens (uma lista por frase) e devolve o
+    mapa palavra -> índice inteiro. Os 2 primeiros índices são reservados:
+    0 = <PAD> (enchimento) e 1 = <UNK> (palavra desconhecida, fora do vocab).
+    Palavras mais frequentes recebem índices menores (não é obrigatório, mas
+    é uma convenção comum e ajuda na leitura/debug)."""
     freq: dict[str, int] = {}
     for tokens in token_lists:
         for tok in tokens:
@@ -40,12 +48,24 @@ def build_vocab(token_lists: list[list[str]], min_freq: int = 1) -> dict[str, in
 
 
 def encode(tokens: list[str], vocab: dict[str, int], max_len: int) -> list[int]:
+    """Converte uma lista de tokens em uma lista de inteiros de tamanho FIXO
+    (max_len) — obrigatório porque redes neurais processam tensores de
+    dimensões fixas em lote. Palavra fora do vocabulário -> <UNK>. Frase mais
+    curta que max_len -> completa com <PAD> no final. Frase mais longa ->
+    trunca (tokens[:max_len])."""
     ids = [vocab.get(tok, vocab[UNK_TOKEN]) for tok in tokens[:max_len]]
     ids += [vocab[PAD_TOKEN]] * (max_len - len(ids))
     return ids
 
 
 def split_dataset(df: pd.DataFrame, val_size: float, test_size: float, seed: int):
+    """Divide o DataFrame em treino/validação/teste em duas etapas (o
+    train_test_split do sklearn só corta em 2 de cada vez):
+      1ª etapa: separa treino de "temp" (val+test juntos)
+      2ª etapa: separa temp em val e test, na proporção certa entre os dois
+    `stratify=` garante que a PROPORÇÃO de cada gênero seja a mesma nos 3
+    splits — sem isso, por azar um split poderia ficar com poucos exemplos
+    de um gênero específico."""
     train_df, temp_df = train_test_split(
         df, test_size=val_size + test_size, stratify=df["label"], random_state=seed
     )
@@ -57,6 +77,10 @@ def split_dataset(df: pd.DataFrame, val_size: float, test_size: float, seed: int
 
 
 def encode_split(df: pd.DataFrame, vocab: dict[str, int], label2id: dict[str, int], max_len: int):
+    """Aplica tokenize()+encode() em TODAS as linhas de um split e converte o
+    resultado num array numpy 2D (N amostras x max_len), pronto para virar
+    tensor do PyTorch na etapa de treino. Também converte os rótulos de texto
+    ("terror") para inteiro (label2id["terror"])."""
     input_ids = np.array(
         [encode(tokenize(t), vocab, max_len) for t in df["text"]], dtype=np.int64
     )
@@ -77,19 +101,28 @@ def main():
     df = pd.read_csv(args.input, encoding="utf-8")
     train_df, val_df, test_df = split_dataset(df, args.val_size, args.test_size, args.seed)
 
+    # IMPORTANTE: o vocabulário é construído SÓ com o texto de treino. Se
+    # usássemos val/test aqui também, o modelo "veria" palavras do teste antes
+    # da hora (data leakage) e a avaliação final ficaria otimista demais.
     train_tokens = [tokenize(t) for t in train_df["text"]]
     vocab = build_vocab(train_tokens, min_freq=args.min_freq)
 
+    # max_len já pode olhar o dataset inteiro (não é "aprendido" com os dados,
+    # é só o tamanho do tensor — não gera vazamento de informação).
     max_len = max(len(tokenize(t)) for t in df["text"])
 
+    # Mapa gênero -> índice inteiro, na ordem alfabética (determinístico).
     labels_sorted = sorted(df["label"].unique())
     label2id = {label: i for i, label in enumerate(labels_sorted)}
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for name, split_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
         input_ids, labels = encode_split(split_df, vocab, label2id, max_len)
+        # .npz = formato binário do numpy para salvar vários arrays num arquivo só
         np.savez(args.output_dir / f"{name}.npz", input_ids=input_ids, labels=labels)
 
+    # Salva os "artefatos" que as próximas etapas (model.py, train.py, api.py)
+    # vão precisar para reconstruir o vocabulário e decodificar as previsões.
     (args.output_dir / "vocab.json").write_text(
         json.dumps(vocab, ensure_ascii=False, indent=2), encoding="utf-8"
     )

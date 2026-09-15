@@ -120,12 +120,19 @@ TEMPLATES = [
 
 
 def capitalize_first(text: str) -> str:
+    """Deixa só a primeira letra maiúscula (usado quando a frase do slot
+    aparece no início da sentença, ex: 'em uma mansão...' -> 'Em uma mansão...')."""
     return text[0].upper() + text[1:] if text else text
 
 
 def build_shared_pool() -> dict[str, list[str]]:
-    """Pool com os valores de TODOS os gêneros para cada tipo de slot —
-    usado para introduzir sobreposição de vocabulário entre gêneros."""
+    """Junta os valores de TODOS os gêneros em um único pool, por tipo de slot.
+
+    Ex: pool["antagonista"] passa a conter os antagonistas de super-herói,
+    terror, ficção científica E mangá/fantasia, todos juntos. É esse pool que
+    generate_sample() usa quando decide "roubar" um valor de outro gênero, para
+    criar sobreposição de vocabulário (veja overlap_prob abaixo).
+    """
     pool: dict[str, list[str]] = {}
     for genre_vocab in VOCAB.values():
         for slot, values in genre_vocab.items():
@@ -134,10 +141,20 @@ def build_shared_pool() -> dict[str, list[str]]:
     return {slot: sorted(set(values)) for slot, values in pool.items()}
 
 
+# Construído uma única vez, na importação do módulo — não muda em tempo de
+# execução, então não precisa ser recalculado a cada chamada de generate_sample.
 SHARED_POOL = build_shared_pool()
 
 
 def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0) -> str:
+    """Monta UMA sinopse sintética para o gênero pedido.
+
+    Para cada um dos 4 "slots" da frase (protagonista, antagonista, cenário,
+    objetivo), sorteia um valor — normalmente do vocabulário do próprio
+    gênero, mas com probabilidade `overlap_prob` sorteia do SHARED_POOL (ou
+    seja, de qualquer gênero). Depois escolhe um template aleatório e encaixa
+    os valores sorteados nele.
+    """
     vocab = VOCAB[genre]
     slots = {}
     for slot in ("protagonista", "antagonista", "cenario", "objetivo"):
@@ -148,6 +165,9 @@ def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0) -
         slots[slot] = rng.choice(source)
 
     template = rng.choice(TEMPLATES)
+    # Alguns templates usam a versão capitalizada (quando o slot abre a frase)
+    # e outros a versão normal (quando o slot vem no meio) — por isso mandamos
+    # as duas variantes de protagonista/cenário no .format().
     return template.format(
         protagonista=slots["protagonista"],
         protagonista_cap=capitalize_first(slots["protagonista"]),
@@ -159,26 +179,34 @@ def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0) -
 
 
 def generate_dataset(samples_per_class: int, seed: int, overlap_prob: float = 0.0) -> pd.DataFrame:
-    rng = random.Random(seed)
+    """Gera o dataset completo: `samples_per_class` frases ÚNICAS para cada um
+    dos 4 gêneros, depois embaralha tudo junto num único DataFrame."""
+    rng = random.Random(seed)  # RNG próprio (não usa random global) -> reprodutível
     rows = []
     for genre in GENRES:
-        seen = set()
+        seen = set()  # já gerados para este gênero, evita frases repetidas
         attempts = 0
+        # Fica gerando até bater a meta de amostras ÚNICAS, com um teto de
+        # tentativas para não entrar em loop infinito caso o vocabulário
+        # esgote as combinações possíveis antes de atingir samples_per_class.
         while len(seen) < samples_per_class and attempts < samples_per_class * 40:
             text = generate_sample(genre, rng, overlap_prob)
             attempts += 1
             if text in seen:
-                continue
+                continue  # frase repetida, sorteia de novo
             seen.add(text)
             rows.append({"text": text, "label": genre})
     df = pd.DataFrame(rows)
+    # Embaralha as linhas (senão o CSV ficaria comtodo super-herói primeiro,
+    # depoistodo terror, etc. — ruim para treino, mesmo com shuffle=True no
+    # DataLoader depois, é mais seguro já entregar embaralhado).
     return df.sample(frac=1, random_state=seed).reset_index(drop=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Gera dataset sintético de sinopses de quadrinhos")
     parser.add_argument("--samples-per-class", type=int, default=150)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=42)  # mesma seed = mesmo dataset sempre
     parser.add_argument(
         "--overlap-prob",
         type=float,
