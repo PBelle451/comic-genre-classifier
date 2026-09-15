@@ -194,7 +194,7 @@ def main():
 
     df = generate_dataset(args.samples_per_class, args.seed, args.overlap_prob)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(args.output, index=False)
+    df.to_csv(args.output, index=False, encoding="utf-8")
     print(f"Dataset salvo em {args.output} ({len(df)} amostras, overlap_prob={args.overlap_prob})")
     print(df["label"].value_counts())
 

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comic Genre Classifier</title>
+<style>
+  :root {
+    --bg: #14121a;
+    --panel: #1e1b27;
+    --border: #2f2b3d;
+    --text: #eae6f5;
+    --muted: #9a93b3;
+    --accent: #8b5cf6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.subtitle { color: var(--muted); margin: 0 0 24px; font-size: 0.9rem; }
+  textarea {
+    width: 100%;
+    min-height: 110px;
+    background: #100e17;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 12px 14px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  button {
+    margin-top: 14px;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  #result { margin-top: 24px; display: none; }
+  .predicted {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .predicted .label { font-size: 1.2rem; font-weight: 700; }
+  .predicted .confidence { color: var(--accent); font-weight: 600; }
+  .bar-row { margin-bottom: 10px; }
+  .bar-row .bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .bar-track { background: #100e17; border-radius: 6px; overflow: hidden; height: 8px; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width 0.4s ease; }
+  #error { display: none; margin-top: 16px; color: #f87171; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Comic Genre Classifier</h1>
+    <p class="subtitle">Cole a sinopse de um quadrinho e veja o gênero previsto pela rede neural.</p>
+    <textarea id="text" placeholder="Ex: Um jovem guerreiro precisa vencer um torneio de artes marciais para reclamar o trono usurpado de sua família."></textarea>
+    <button id="submit">Classificar</button>
+    <div id="error"></div>
+    <div id="result">
+      <div class="predicted">
+        <span class="label" id="predicted-label"></span>
+        <span class="confidence" id="predicted-confidence"></span>
+      </div>
+      <div id="bars"></div>
+    </div>
+  </div>
+
+<script>
+const LABELS = {
+  "super-heroi": "Super-herói",
+  "terror": "Terror / Horror",
+  "ficcao-cientifica": "Ficção científica",
+  "manga-fantasia": "Mangá / Fantasia",
+};
+
+const textEl = document.getElementById("text");
+const submitEl = document.getElementById("submit");
+const resultEl = document.getElementById("result");
+const errorEl = document.getElementById("error");
+const barsEl = document.getElementById("bars");
+const predictedLabelEl = document.getElementById("predicted-label");
+const predictedConfidenceEl = document.getElementById("predicted-confidence");
+
+async function classify() {
+  const text = textEl.value.trim();
+  if (!text) return;
+
+  submitEl.disabled = true;
+  submitEl.textContent = "Classificando...";
+  errorEl.style.display = "none";
+  resultEl.style.display = "none";
+
+  try {
+    const res = await fetch("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error(`Erro ${res.status}`);
+    const data = await res.json();
+    renderResult(data);
+  } catch (err) {
+    errorEl.textContent = `Não foi possível classificar: ${err.message}`;
+    errorEl.style.display = "block";
+  } finally {
+    submitEl.disabled = false;
+    submitEl.textContent = "Classificar";
+  }
+}
+
+function renderResult(data) {
+  predictedLabelEl.textContent = LABELS[data.label] || data.label;
+  predictedConfidenceEl.textContent = `${(data.confidence * 100).toFixed(1)}%`;
+
+  const entries = Object.entries(data.probabilities).sort((a, b) => b[1] - a[1]);
+  barsEl.innerHTML = "";
+  for (const [label, prob] of entries) {
+    const pct = (prob * 100).toFixed(1);
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `
+      <div class="bar-label"><span>${LABELS[label] || label}</span><span>${pct}%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+    `;
+    barsEl.appendChild(row);
+  }
+  resultEl.style.display = "block";
+}
+
+submitEl.addEventListener("click", classify);
+textEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) classify();
+});
+</script>
+</body>
+</html>

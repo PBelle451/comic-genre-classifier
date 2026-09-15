@@ -74,7 +74,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    df = pd.read_csv(args.input)
+    df = pd.read_csv(args.input, encoding="utf-8")
     train_df, val_df, test_df = split_dataset(df, args.val_size, args.test_size, args.seed)
 
     train_tokens = [tokenize(t) for t in train_df["text"]]
@@ -90,10 +90,14 @@ def main():
         input_ids, labels = encode_split(split_df, vocab, label2id, max_len)
         np.savez(args.output_dir / f"{name}.npz", input_ids=input_ids, labels=labels)
 
-    (args.output_dir / "vocab.json").write_text(json.dumps(vocab, ensure_ascii=False, indent=2))
-    (args.output_dir / "label2id.json").write_text(json.dumps(label2id, ensure_ascii=False, indent=2))
+    (args.output_dir / "vocab.json").write_text(
+        json.dumps(vocab, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (args.output_dir / "label2id.json").write_text(
+        json.dumps(label2id, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     (args.output_dir / "meta.json").write_text(
-        json.dumps({"max_len": max_len, "vocab_size": len(vocab)}, indent=2)
+        json.dumps({"max_len": max_len, "vocab_size": len(vocab)}, indent=2), encoding="utf-8"
     )
 
     print(f"Vocabulário: {len(vocab)} tokens | max_len: {max_len}")

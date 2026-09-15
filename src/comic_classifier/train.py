@@ -65,8 +65,8 @@ def main():
 
     torch.manual_seed(args.seed)
 
-    meta = json.loads((PROCESSED_DIR / "meta.json").read_text())
-    label2id = json.loads((PROCESSED_DIR / "label2id.json").read_text())
+    meta = json.loads((PROCESSED_DIR / "meta.json").read_text(encoding="utf-8"))
+    label2id = json.loads((PROCESSED_DIR / "label2id.json").read_text(encoding="utf-8"))
     id2label = {v: k for k, v in label2id.items()}
 
     train_loader = DataLoader(load_split("train"), batch_size=args.batch_size, shuffle=True)

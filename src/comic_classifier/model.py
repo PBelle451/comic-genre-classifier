@@ -67,8 +67,8 @@ class ComicRNNClassifier(nn.Module):
 
 def build_model_from_artifacts(processed_dir, **overrides) -> ComicRNNClassifier:
     """Instancia o modelo lendo vocab_size e num_classes dos artefatos da etapa 3."""
-    meta = json.loads((processed_dir / "meta.json").read_text())
-    label2id = json.loads((processed_dir / "label2id.json").read_text())
+    meta = json.loads((processed_dir / "meta.json").read_text(encoding="utf-8"))
+    label2id = json.loads((processed_dir / "label2id.json").read_text(encoding="utf-8"))
     params = dict(vocab_size=meta["vocab_size"], num_classes=len(label2id))
     params.update(overrides)
     return ComicRNNClassifier(**params)
