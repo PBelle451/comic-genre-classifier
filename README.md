@@ -19,13 +19,17 @@ comic-genre-classifier/
 ├── src/
 │   └── comic_classifier/
 │       └── static/
-            └── index.html       # tela para poder inserir os textos
+│            └── index.html       # tela para poder inserir os textos
 │       ├── data_generation.py   # geração do dataset sintético (etapa 2)
 │       ├── preprocessing.py     # tokenização e vocabulário (etapa 3)
 │       ├── model.py             # arquitetura da rede (etapa 4)
 │       ├── train.py             # loop de treino e avaliação (etapa 5)
 │       └── api.py               # serviço FastAPI (etapa 6)
 ├── tests/
+│    └── test_api.py                # Realiza testes do api.py
+│    └── test_data_generation.py    # Realiza testes da geração de dados.
+│    └── test_model.py              # Realiza testes do modelo     
+│    └── test_preprocessing.py      # Realiza testes de pré-processamento.
 ├── requirements.txt
 ├── Dockerfile  # Configuração do ambiente (etapa 1)
 └── README.md
@@ -46,4 +50,5 @@ docker run -p 8000:8000 comic-genre-classifier
 3.  Pré-processar e construir vocabulário
 4.  Construir a rede neural
 5.  Treinar e avaliar
-6.  Empacotar como API (FastAPI + Docker)
+6.  Realizar testes
+7. Empacotar como API (FastAPI + Docker)
