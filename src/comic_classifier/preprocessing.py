@@ -58,20 +58,29 @@ def encode(tokens: list[str], vocab: dict[str, int], max_len: int) -> list[int]:
     return ids
 
 
+def _strata(df: pd.DataFrame) -> pd.Series:
+    """Rótulo de estratificação de cada linha: o gênero, ou gênero|língua
+    quando o dataset é multilíngue (coluna "lang" presente)."""
+    if "lang" in df.columns:
+        return df["label"] + "|" + df["lang"]
+    return df["label"]
+
+
 def split_dataset(df: pd.DataFrame, val_size: float, test_size: float, seed: int):
     """Divide o DataFrame em treino/validação/teste em duas etapas (o
     train_test_split do sklearn só corta em 2 de cada vez):
       1ª etapa: separa treino de "temp" (val+test juntos)
       2ª etapa: separa temp em val e test, na proporção certa entre os dois
-    `stratify=` garante que a PROPORÇÃO de cada gênero seja a mesma nos 3
+    `stratify=` garante que a PROPORÇÃO de cada grupo seja a mesma nos 3
     splits — sem isso, por azar um split poderia ficar com poucos exemplos
-    de um gênero específico."""
+    de um gênero (ou de uma língua) específico. Se o DataFrame tem a coluna
+    "lang", o grupo é a combinação gênero + língua (ex: "terror|en")."""
     train_df, temp_df = train_test_split(
-        df, test_size=val_size + test_size, stratify=df["label"], random_state=seed
+        df, test_size=val_size + test_size, stratify=_strata(df), random_state=seed
     )
     relative_test = test_size / (val_size + test_size)
     val_df, test_df = train_test_split(
-        temp_df, test_size=relative_test, stratify=temp_df["label"], random_state=seed
+        temp_df, test_size=relative_test, stratify=_strata(temp_df), random_state=seed
     )
     return train_df.reset_index(drop=True), val_df.reset_index(drop=True), test_df.reset_index(drop=True)
 
@@ -118,8 +127,13 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for name, split_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
         input_ids, labels = encode_split(split_df, vocab, label2id, max_len)
+        arrays = {"input_ids": input_ids, "labels": labels}
+        if "lang" in split_df.columns:
+            # Guarda a língua de cada amostra (ex: "pt"/"en") para o train.py
+            # conseguir reportar a acurácia separadamente por língua.
+            arrays["langs"] = split_df["lang"].to_numpy(dtype=str)
         # .npz = formato binário do numpy para salvar vários arrays num arquivo só
-        np.savez(args.output_dir / f"{name}.npz", input_ids=input_ids, labels=labels)
+        np.savez(args.output_dir / f"{name}.npz", **arrays)
 
     # Salva os "artefatos" que as próximas etapas (model.py, train.py, api.py)
     # vão precisar para reconstruir o vocabulário e decodificar as previsões.
@@ -136,7 +150,10 @@ def main():
     print(f"Vocabulário: {len(vocab)} tokens | max_len: {max_len}")
     print(f"Treino: {len(train_df)} | Validação: {len(val_df)} | Teste: {len(test_df)}")
     print("Distribuição de treino por classe:")
-    print(train_df["label"].value_counts())
+    if "lang" in train_df.columns:
+        print(train_df.groupby(["lang", "label"]).size())
+    else:
+        print(train_df["label"].value_counts())
 
 
 if __name__ == "__main__":

@@ -159,6 +159,20 @@ def main():
     print("Matriz de confusão (linhas=real, colunas=previsto):")
     print(target_names)
     print(confusion_matrix(all_labels, all_preds))
+
+    # Acurácia separada por língua (só quando o dataset é multilíngue). O
+    # test_loader não embaralha, então a ordem das previsões é a mesma da
+    # ordem das linhas no test.npz — dá para casar cada previsão com a sua língua.
+    test_data = np.load(PROCESSED_DIR / "test.npz")
+    if "langs" in test_data.files:
+        langs = test_data["langs"]
+        preds_arr, labels_arr = np.array(all_preds), np.array(all_labels)
+        print("\nAcurácia por língua (teste):")
+        for lang in sorted(set(langs.tolist())):
+            mask = langs == lang
+            acc = (preds_arr[mask] == labels_arr[mask]).mean()
+            print(f"  {lang}: {acc:.3f} ({int(mask.sum())} amostras)")
+
     print(f"\nMelhor checkpoint salvo em: {MODELS_DIR / 'best_model.pt'}")
 
 

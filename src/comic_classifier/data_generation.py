@@ -2,6 +2,10 @@
 Gera um dataset sintético de sinopses de quadrinhos rotuladas por gênero,
 combinando templates de frase com bancos de vocabulário específicos de cada
 gênero: super-herói, terror/horror, ficção científica, mangá/fantasia.
+
+Suporta várias línguas (hoje: português "pt" e inglês "en"). Cada língua tem
+seu próprio banco de vocabulário e seus próprios templates; os RÓTULOS de
+gênero são os mesmos em todas, e o dataset ganha uma coluna "lang".
 """
 
 import argparse
@@ -12,7 +16,10 @@ import pandas as pd
 
 GENRES = ["super-heroi", "terror", "ficcao-cientifica", "manga-fantasia"]
 
-VOCAB = {
+# ---------------------------------------------------------------------------
+# Português
+# ---------------------------------------------------------------------------
+VOCAB_PT = {
     "super-heroi": {
         "protagonista": [
             "um vigilante mascarado", "uma heroína com poderes cósmicos",
@@ -111,12 +118,139 @@ VOCAB = {
     },
 }
 
-TEMPLATES = [
+TEMPLATES_PT = [
     "{cenario_cap}, {protagonista} precisa enfrentar {antagonista} para {objetivo}.",
     "{protagonista_cap} encontra-se diante da missão de confrontar {antagonista} {cenario}, na tentativa de {objetivo}.",
     "Quando {antagonista} ameaça tudo o que conhecem, {protagonista} parte {cenario} para {objetivo}.",
     "{cenario_cap}, a missão é clara: {objetivo}. Mas {antagonista} não vai facilitar o caminho de {protagonista}.",
 ]
+
+# ---------------------------------------------------------------------------
+# Inglês
+# Convenções para manter a gramática correta em qualquer combinação de slots:
+#   - protagonista e antagonista são sempre sintagmas no SINGULAR (concordância
+#     do verbo nos templates);
+#   - objetivo é um verbo no infinitivo SEM "to" (o template acrescenta o "to"
+#     quando precisa);
+#   - sem apóstrofos ("clan's" viraria dois tokens, "clan" e "s", no tokenizador).
+# ---------------------------------------------------------------------------
+VOCAB_EN = {
+    "super-heroi": {
+        "protagonista": [
+            "a masked vigilante", "a heroine with cosmic powers",
+            "a teenager who just gained superpowers", "a superhuman government agent",
+            "a team of amateur heroes", "a vigilante driven by revenge",
+            "a scientist turned heroine", "a retired veteran hero",
+        ],
+        "antagonista": [
+            "a villain who wants to dominate the city", "a secret organization of supervillains",
+            "an old arch-nemesis", "a war machine out of control",
+            "an evil clone of the hero", "a corrupt billionaire with an army of robots",
+        ],
+        "cenario": [
+            "in a metropolis gripped by chaos", "on the streets of a city on the brink of collapse",
+            "atop a burning skyscraper", "during a large-scale invasion",
+            "in a secret laboratory beneath the city",
+        ],
+        "objetivo": [
+            "save the city before it is too late",
+            "stop a catastrophe that threatens millions of lives",
+            "protect a secret identity while fighting for justice",
+            "regain control of their own powers",
+            "unite a scattered team to face the final threat",
+        ],
+    },
+    "terror": {
+        "protagonista": [
+            "a family that has just moved in", "a group of friends on a weekend trip",
+            "a paranormal investigator", "a lonely caretaker",
+            "a child who sees what adults cannot", "a priest sent to perform an exorcism",
+        ],
+        "antagonista": [
+            "an entity that lives inside the walls of the house", "a sinister cult hidden in the forest",
+            "a spirit trapped between two worlds", "a curse passed down through generations",
+            "a creature that only appears at midnight", "a neighbor with a terrifying secret",
+        ],
+        "cenario": [
+            "in an abandoned Victorian mansion", "in an isolated small town",
+            "in a decommissioned psychiatric hospital", "in a forest from which no one returns",
+            "in a basement no one dares to visit",
+        ],
+        "objetivo": [
+            "survive until dawn", "uncover the truth before losing their sanity",
+            "break a curse before it is too late",
+            "escape from a place that will not let them leave",
+            "protect the family from a presence that will not go away",
+        ],
+    },
+    "ficcao-cientifica": {
+        "protagonista": [
+            "the crew of an exploration ship", "a newly awakened artificial intelligence",
+            "a colonial engineer on Mars", "a genetically cloned soldier",
+            "a time traveler lost on the wrong timeline", "a scientist who discovered alien life",
+        ],
+        "antagonista": [
+            "a rogue artificial intelligence", "an invading alien civilization",
+            "an authoritarian government that controls the colony", "an unknown space anomaly",
+            "a synthetic virus that rewrites human DNA", "a corporation that manipulates the timeline",
+        ],
+        "cenario": [
+            "aboard a drifting space station", "in a distant colony at the edge of the galaxy",
+            "on a post-apocalyptic Earth ruled by machines", "during a decades-long interstellar voyage",
+            "in a futuristic city divided by technological castes",
+        ],
+        "objetivo": [
+            "prevent the collapse of the last human colony",
+            "restore the timeline before history is erased",
+            "decide whether humanity deserves to be saved",
+            "find a new home before resources run out",
+            "escape the control of the artificial intelligence that governs them",
+        ],
+    },
+    "manga-fantasia": {
+        "protagonista": [
+            "a young warrior in training", "an exiled princess",
+            "a student at a school of magic", "a wandering swordsman with no past",
+            "a sorceress seeking revenge", "a newly formed party of adventurers",
+        ],
+        "antagonista": [
+            "an ancient dragon awakened by mistake", "an emperor who wants to unite the kingdoms by force",
+            "a cult that worships a forgotten god", "a childhood rival turned enemy",
+            "a shadow that devours the magic of the world", "a deadly tournament fought between rival clans",
+        ],
+        "cenario": [
+            "in a kingdom divided by ancient wars", "in a secret martial arts academy",
+            "in the mountains where the last dragons live",
+            "during a tournament that decides the fate of the kingdom",
+            "in a forest sealed by forbidden magic",
+        ],
+        "objetivo": [
+            "gather the fragments of a legendary sword",
+            "win the tournament and restore the honor of their clan",
+            "break the seal that imprisons their true power",
+            "reclaim the usurped throne of their family",
+            "prove worthy of becoming the next master",
+        ],
+    },
+}
+
+# As CHAVES dos placeholders continuam em português (protagonista, cenario...)
+# porque são nomes internos do código, iguais para todas as línguas.
+TEMPLATES_EN = [
+    "{cenario_cap}, {protagonista} must face {antagonista} in order to {objetivo}.",
+    "{protagonista_cap} is tasked with confronting {antagonista} {cenario}, in an attempt to {objetivo}.",
+    "{cenario_cap}, {protagonista} sets out to {objetivo} as {antagonista} closes in.",
+    "{cenario_cap}, the mission is clear: {objetivo}. But {antagonista} will not make it easy for {protagonista}.",
+]
+
+# ---------------------------------------------------------------------------
+# Registro de línguas: cada código aponta para o vocabulário e os templates
+# daquela língua. Para adicionar uma nova (ex: "es"), basta criar VOCAB_ES e
+# TEMPLATES_ES e registrá-los aqui — o resto do código já é genérico.
+# ---------------------------------------------------------------------------
+LANGUAGES = ["pt", "en"]
+VOCAB_BY_LANG = {"pt": VOCAB_PT, "en": VOCAB_EN}
+TEMPLATES_BY_LANG = {"pt": TEMPLATES_PT, "en": TEMPLATES_EN}
 
 
 def capitalize_first(text: str) -> str:
@@ -125,8 +259,9 @@ def capitalize_first(text: str) -> str:
     return text[0].upper() + text[1:] if text else text
 
 
-def build_shared_pool() -> dict[str, list[str]]:
-    """Junta os valores de TODOS os gêneros em um único pool, por tipo de slot.
+def build_shared_pool(vocab: dict) -> dict[str, list[str]]:
+    """Junta os valores de TODOS os gêneros de UMA língua em um único pool, por
+    tipo de slot.
 
     Ex: pool["antagonista"] passa a conter os antagonistas de super-herói,
     terror, ficção científica E mangá/fantasia, todos juntos. É esse pool que
@@ -134,37 +269,39 @@ def build_shared_pool() -> dict[str, list[str]]:
     criar sobreposição de vocabulário (veja overlap_prob abaixo).
     """
     pool: dict[str, list[str]] = {}
-    for genre_vocab in VOCAB.values():
+    for genre_vocab in vocab.values():
         for slot, values in genre_vocab.items():
             pool.setdefault(slot, [])
             pool[slot].extend(values)
     return {slot: sorted(set(values)) for slot, values in pool.items()}
 
 
-# Construído uma única vez, na importação do módulo — não muda em tempo de
-# execução, então não precisa ser recalculado a cada chamada de generate_sample.
-SHARED_POOL = build_shared_pool()
+# Um pool por língua, construído uma única vez na importação do módulo. A
+# sobreposição acontece só DENTRO da mesma língua: uma frase em inglês nunca
+# "rouba" um pedaço em português (isso geraria frases híbridas, não realistas).
+SHARED_POOLS = {lang: build_shared_pool(vocab) for lang, vocab in VOCAB_BY_LANG.items()}
 
 
-def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0) -> str:
-    """Monta UMA sinopse sintética para o gênero pedido.
+def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0, lang: str = "pt") -> str:
+    """Monta UMA sinopse sintética para o gênero e a língua pedidos.
 
     Para cada um dos 4 "slots" da frase (protagonista, antagonista, cenário,
     objetivo), sorteia um valor — normalmente do vocabulário do próprio
-    gênero, mas com probabilidade `overlap_prob` sorteia do SHARED_POOL (ou
-    seja, de qualquer gênero). Depois escolhe um template aleatório e encaixa
-    os valores sorteados nele.
+    gênero, mas com probabilidade `overlap_prob` sorteia do pool compartilhado
+    (ou seja, de qualquer gênero, na MESMA língua). Depois escolhe um template
+    aleatório daquela língua e encaixa os valores sorteados nele.
     """
-    vocab = VOCAB[genre]
+    vocab = VOCAB_BY_LANG[lang][genre]
+    shared_pool = SHARED_POOLS[lang]
     slots = {}
     for slot in ("protagonista", "antagonista", "cenario", "objetivo"):
         # Com probabilidade overlap_prob, puxa o valor do pool geral (qualquer
         # gênero) em vez do vocabulário específico deste gênero — isso cria
         # frases ambíguas de propósito, tornando a classificação mais difícil.
-        source = SHARED_POOL[slot] if rng.random() < overlap_prob else vocab[slot]
+        source = shared_pool[slot] if rng.random() < overlap_prob else vocab[slot]
         slots[slot] = rng.choice(source)
 
-    template = rng.choice(TEMPLATES)
+    template = rng.choice(TEMPLATES_BY_LANG[lang])
     # Alguns templates usam a versão capitalizada (quando o slot abre a frase)
     # e outros a versão normal (quando o slot vem no meio) — por isso mandamos
     # as duas variantes de protagonista/cenário no .format().
@@ -178,34 +315,53 @@ def generate_sample(genre: str, rng: random.Random, overlap_prob: float = 0.0) -
     )
 
 
-def generate_dataset(samples_per_class: int, seed: int, overlap_prob: float = 0.0) -> pd.DataFrame:
-    """Gera o dataset completo: `samples_per_class` frases ÚNICAS para cada um
-    dos 4 gêneros, depois embaralha tudo junto num único DataFrame."""
+def generate_dataset(
+    samples_per_class: int, seed: int, overlap_prob: float = 0.0, languages=("pt",)
+) -> pd.DataFrame:
+    """Gera o dataset completo: `samples_per_class` frases ÚNICAS para cada
+    combinação (língua, gênero), depois embaralha tudo junto num único
+    DataFrame com as colunas: text, label (gênero) e lang (língua).
+
+    Ex: com languages=("pt", "en") e samples_per_class=150 -> 2 x 4 x 150 = 1200
+    linhas, perfeitamente balanceadas entre línguas e gêneros."""
     rng = random.Random(seed)  # RNG próprio (não usa random global) -> reprodutível
     rows = []
-    for genre in GENRES:
-        seen = set()  # já gerados para este gênero, evita frases repetidas
-        attempts = 0
-        # Fica gerando até bater a meta de amostras ÚNICAS, com um teto de
-        # tentativas para não entrar em loop infinito caso o vocabulário
-        # esgote as combinações possíveis antes de atingir samples_per_class.
-        while len(seen) < samples_per_class and attempts < samples_per_class * 40:
-            text = generate_sample(genre, rng, overlap_prob)
-            attempts += 1
-            if text in seen:
-                continue  # frase repetida, sorteia de novo
-            seen.add(text)
-            rows.append({"text": text, "label": genre})
+    for lang in languages:
+        for genre in GENRES:
+            seen = set()  # já gerados para esta (língua, gênero), evita repetição
+            attempts = 0
+            # Fica gerando até bater a meta de amostras ÚNICAS, com um teto de
+            # tentativas para não entrar em loop infinito caso o vocabulário
+            # esgote as combinações possíveis antes de atingir samples_per_class.
+            while len(seen) < samples_per_class and attempts < samples_per_class * 40:
+                text = generate_sample(genre, rng, overlap_prob, lang)
+                attempts += 1
+                if text in seen:
+                    continue  # frase repetida, sorteia de novo
+                seen.add(text)
+                rows.append({"text": text, "label": genre, "lang": lang})
     df = pd.DataFrame(rows)
-    # Embaralha as linhas (senão o CSV ficaria comtodo super-herói primeiro,
-    # depoistodo terror, etc. — ruim para treino, mesmo com shuffle=True no
+    # Embaralha as linhas (senão o CSV ficaria com todo super-herói primeiro,
+    # depois todo terror, etc. — ruim para treino, mesmo com shuffle=True no
     # DataLoader depois, é mais seguro já entregar embaralhado).
     return df.sample(frac=1, random_state=seed).reset_index(drop=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Gera dataset sintético de sinopses de quadrinhos")
-    parser.add_argument("--samples-per-class", type=int, default=150)
+    parser.add_argument(
+        "--samples-per-class",
+        type=int,
+        default=150,
+        help="Amostras por gênero, POR LÍNGUA (o total é línguas x 4 gêneros x este valor)",
+    )
+    parser.add_argument(
+        "--languages",
+        nargs="+",
+        choices=LANGUAGES,
+        default=LANGUAGES,
+        help="Línguas a gerar (padrão: todas as registradas)",
+    )
     parser.add_argument("--seed", type=int, default=42)  # mesma seed = mesmo dataset sempre
     parser.add_argument(
         "--overlap-prob",
@@ -220,11 +376,11 @@ def main():
     )
     args = parser.parse_args()
 
-    df = generate_dataset(args.samples_per_class, args.seed, args.overlap_prob)
+    df = generate_dataset(args.samples_per_class, args.seed, args.overlap_prob, tuple(args.languages))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.output, index=False, encoding="utf-8")
     print(f"Dataset salvo em {args.output} ({len(df)} amostras, overlap_prob={args.overlap_prob})")
-    print(df["label"].value_counts())
+    print(df.groupby(["lang", "label"]).size())
 
 
 if __name__ == "__main__":
