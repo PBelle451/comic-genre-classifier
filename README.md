@@ -4,6 +4,7 @@ Classificador de gênero/tema de quadrinhos a partir de texto (sinopses/descriç
 usando embeddings treinados do zero e uma rede neural em PyTorch. Dataset gerado
 sinteticamente para os gêneros: **super-herói, terror/horror, ficção científica e
 mangá/fantasia**.
+Agora com suporte para inglês!!! 
 
 Foi feito usando a linguagem Python com o ‘framework’ PyTorch para o processamento e treinamento de dados e FastAPI para a criação da API.
 
